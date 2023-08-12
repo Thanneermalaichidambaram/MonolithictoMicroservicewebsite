@@ -1,0 +1,143 @@
+Migrating a Monolithic Website to Microservices on Google Kubernetes Engine
+
+Task 1. Clone the source repository
+
+Run the following commands to clone the git repo to your Cloud Shell instance and change to the appropriate directory. You will also install the NodeJS dependencies so you can test your monolith before deploying:
+cd ~
+git clone https://github.com/googlecodelabs/monolith-to-microservices.git
+cd ~/monolith-to-microservices
+./setup.sh
+
+
+Task 2. Create a GKE cluster
+
+Run the following command to enable the Containers API so you can use Google Kubernetes Engine:
+gcloud services enable container.googleapis.com
+
+Run the command below to create a GKE cluster named fancy-cluster with 3 nodes:
+gcloud container clusters create fancy-cluster --num-nodes 3 --machine-type=e2-standard-4
+
+Once the command has completed, run the following to see the cluster's three worker VM instances:
+gcloud compute instances list
+
+You should see your cluster named fancy-cluster.
+
+
+Task 3. Deploy the existing monolith
+
+Run the following script to deploy a monolith application to your GKE cluster:
+cd ~/monolith-to-microservices
+./deploy-monolith.sh
+
+Accessing the monolith
+To find the external IP address for the monolith application, run the following command:
+kubectl get service monolith
+
+Once you've determined the external IP address for your monolith, copy the IP address. Point your browser to this URL (such as http://203.0.113.0) to check if your monolith is accessible.
+
+
+
+Task 4. Migrate orders to a microservice
+
+Create a Docker container with Cloud Build
+
+Run the following commands to build your Docker container and push it to the Google Container Registry:
+cd ~/monolith-to-microservices/microservices/src/orders
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/orders:1.0.0 .
+
+To view your build history or watch the process in real time, in the Console click the Navigation Menu button on the top left and scroll down to CI/CD and click Cloud Build > History. Here you can see a list of all your previous builds, there should only be 1 that you just created.
+
+Deploy container to GKE
+
+Run the following command to deploy your application:
+kubectl create deployment orders --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/orders:1.0.0
+
+Verify the deployment
+
+To verify the Deployment was created successfully, run the following command:
+kubectl get all
+
+
+Expose GKE container
+Run the following command to expose your website to the Internet:
+kubectl expose deployment orders --type=LoadBalancer --port 80 --target-port 8081
+
+Accessing the service
+If you want to find out the external IP that GKE provisioned for your application, you can inspect the Service with the kubectl get service command:
+kubectl get service orders
+
+Reconfigure the monolith
+
+Use the nano editor to replace the local URL with the IP address of the Orders microservice:
+cd ~/monolith-to-microservices/react-app
+nano .env.monolith
+
+Replace the REACT_APP_ORDERS_URL to the new format while replacing with your Orders microservice IP address so it matches below:
+REACT_APP_ORDERS_URL=http://<ORDERS_IP_ADDRESS>/api/orders
+REACT_APP_PRODUCTS_URL=/service/products
+
+Rebuild Monolith Config Files:
+npm run build:monolith
+
+Create Docker Container with Cloud Build:
+cd ~/monolith-to-microservices/monolith
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/monolith:2.0.0 .
+
+Deploy Container to GKE:
+kubectl set image deployment/monolith monolith=gcr.io/${GOOGLE_CLOUD_PROJECT}/monolith:2.0.0
+
+Verify the application is now hitting the Orders microservice by going to the monolith application in your browser and navigating to the Orders page.
+
+Task 5. Migrate Products to microservice
+
+Create new Products microservice
+Create Docker Container with Cloud Build:
+cd ~/monolith-to-microservices/microservices/src/products
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/products:1.0.0 .
+
+Deploy Container to GKE:
+kubectl create deployment products --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/products:1.0.0
+
+Expose the GKE container:
+kubectl expose deployment products --type=LoadBalancer --port 80 --target-port 8082
+
+Find the public IP of the Products services the same way you did for the Orders service:
+kubectl get service products
+
+Reconfigure the monolith
+Use the nano editor to replace the local URL with the IP address of the new Products microservices:
+cd ~/monolith-to-microservices/react-app
+nano .env.monolith
+
+Rebuild Monolith Config Files:
+npm run build:monolith
+
+Create Docker Container with Cloud Build:
+cd ~/monolith-to-microservices/monolith
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/monolith:3.0.0 .
+
+Deploy Container to GKE:
+kubectl set image deployment/monolith monolith=gcr.io/${GOOGLE_CLOUD_PROJECT}/monolith:3.0.0
+
+
+Task 6. Migrate frontend to microservice
+
+Create a new frontend microservice
+
+Run the following commands to copy the microservices URL config files to the frontend microservice codebase:
+cd ~/monolith-to-microservices/react-app
+cp .env.monolith .env
+npm run build
+Once that is completed, follow the same process as the previous steps. Run the following commands to build a Docker container, deploy your container and expose it to via a Kubernetes service.
+
+Create Docker Container with Google Cloud Build:
+cd ~/monolith-to-microservices/microservices/src/frontend
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/frontend:1.0.0 .
+
+Deploy Container to GKE:
+kubectl create deployment frontend --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/frontend:1.0.0
+
+Expose GKE Container
+kubectl expose deployment frontend --type=LoadBalancer --port 80 --target-port 8080
+
+
